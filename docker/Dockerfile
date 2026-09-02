@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS builder
 
 ARG ISOQUANT_VERSION=4.0.0
 ARG ISOQUANT_TARBALL_URL=https://github.com/ablab/IsoQuant/releases/download/v4.0.0/IsoQuant-4.0.0.tar.gz
@@ -20,6 +20,7 @@ RUN set -eux; \
             build-essential \
             ca-certificates \
             curl \
+            patch \
             python3-dev \
             tar; then \
         break; \
@@ -34,6 +35,8 @@ RUN set -eux; \
 WORKDIR /tmp/isoquant-build
 
 COPY docker/requirements.lock /tmp/isoquant-requirements.lock
+COPY docker/patches/0001-store-generated-fai-in-output.patch /tmp/isoquant-fai.patch
+COPY docker/patches/0002-honor-xdg-config-home.patch /tmp/isoquant-xdg.patch
 
 RUN set -eux; \
     curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "${ISOQUANT_TARBALL_URL}" -o isoquant.tar.gz; \
@@ -41,6 +44,12 @@ RUN set -eux; \
     mkdir -p src; \
     tar -xzf isoquant.tar.gz -C src --strip-components=1; \
     test "$(cat src/VERSION)" = "${ISOQUANT_VERSION}"; \
+    echo '22c8c901dcca3142ed02e237d23e0dd97287bc1079ce0af564b104f0badbf7d4  /tmp/isoquant-fai.patch' | sha256sum -c -; \
+    patch --batch -d src -p1 < /tmp/isoquant-fai.patch; \
+    echo '1af731367563d86c3c688739bafe3a9909f93951ae96a07e755d95a6afa85e5b  src/isoquant.py' | sha256sum -c -; \
+    echo '03d60b6eb46d5b74dead6c38402a9429a6611bcf4238079c0a390d4a06bd824e  /tmp/isoquant-xdg.patch' | sha256sum -c -; \
+    patch --batch -d src -p1 < /tmp/isoquant-xdg.patch; \
+    echo '4228b0fd446bad29685f0be678a7801552ddaa9f86c2b279f9819ffca71a8f38  src/isoquant.py' | sha256sum -c -; \
     python -m venv "${ISOQUANT_PYTHON}"; \
     python -m pip install --no-cache-dir \
       "pip==26.0.1" \
@@ -59,8 +68,12 @@ RUN set -eux; \
     cp -a src/docs/. /opt/isoquant/share/doc/isoquant/manual/; \
     printf '%s\n' \
       "IsoQuant ${ISOQUANT_VERSION} packaged for TAFFISH from the official GitHub release asset." \
+      "Base image: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254" \
       "Source: ${ISOQUANT_TARBALL_URL}" \
       "SHA256: ${ISOQUANT_TARBALL_SHA256}" \
+      "TAFFISH patch SHA256: 22c8c901dcca3142ed02e237d23e0dd97287bc1079ce0af564b104f0badbf7d4 (copy/rebuild pyfaidx FAI in the output directory without modifying the input)" \
+      "TAFFISH patch SHA256: 03d60b6eb46d5b74dead6c38402a9429a6611bcf4238079c0a390d4a06bd824e (honor XDG_CONFIG_HOME for the IsoQuant path registry)" \
+      "Patched isoquant.py SHA256: 4228b0fd446bad29685f0be678a7801552ddaa9f86c2b279f9819ffca71a8f38" \
       "Python: 3.12" \
       "XGBoost runtime: xgboost-cpu 2.1.4; IsoQuant uses CPU model inference and exposes no GPU-only analysis mode." \
       "Scikit-learn runtime: 1.7.2; newer 1.9 releases removed the estimator API used by XGBoost 2.1.4 model loading." \
@@ -92,15 +105,16 @@ RUN set -eux; \
       "${site_packages}"/wheel \
       "${site_packages}"/wheel-*.dist-info; \
     rm -f "${ISOQUANT_PYTHON}"/bin/pip "${ISOQUANT_PYTHON}"/bin/pip3 "${ISOQUANT_PYTHON}"/bin/pip3.12; \
-    rm -rf /root/.cache /tmp/isoquant-build /tmp/isoquant-requirements.lock
+    rm -rf /root/.cache /tmp/isoquant-build /tmp/isoquant-requirements.lock /tmp/isoquant-fai.patch /tmp/isoquant-xdg.patch
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONNOUSERSITE=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV MPLBACKEND=Agg
+ENV HOME=/tmp/isoquant-home
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV NUMBA_CACHE_DIR=/tmp/numba-cache
 ENV XDG_CACHE_HOME=/tmp/xdg-cache

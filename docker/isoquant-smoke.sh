@@ -63,9 +63,17 @@ run_pipeline() {
   rm -rf "$tmp"
   mkdir -p "$tmp"
   cd "$tmp"
-  isoquant --test > run.log 2>&1
+  if isoquant --test > run.log 2>&1; then
+    :
+  else
+    status=$?
+    say "stage=isoquant-test exit=$status"
+    tail -n 200 run.log >&2
+    exit "$status"
+  fi
   if grep -E 'CRITICAL|Traceback|=== TEST FAILED ===' run.log >/dev/null; then
-    cat run.log >&2
+    say "stage=isoquant-test validation=critical-log"
+    tail -n 200 run.log >&2
     exit 1
   fi
   grep -F '=== TEST PASSED CORRECTLY ===' run.log >/dev/null
@@ -84,12 +92,20 @@ run_pipeline() {
     --read_info isoquant_test/TEST_DATA/TEST_DATA.read_info.tsv.gz \
     --format read_assignments \
     --output isoquant_test/TEST_DATA/TEST_DATA.read_assignments.tsv
-  isoquant-visualize isoquant_test \
-    --gene_list /dev/null \
-    --find_genes 1 \
-    --viz_output visualization > visualization.log 2>&1
+  if isoquant-visualize isoquant_test \
+      --gene_list /dev/null \
+      --find_genes 1 \
+      --viz_output visualization > visualization.log 2>&1; then
+    :
+  else
+    status=$?
+    say "stage=visualization exit=$status"
+    tail -n 200 visualization.log >&2
+    exit "$status"
+  fi
   if grep -E 'CRITICAL|Traceback' visualization.log >/dev/null; then
-    cat visualization.log >&2
+    say "stage=visualization validation=critical-log"
+    tail -n 200 visualization.log >&2
     exit 1
   fi
   test -s visualization/combined_visualization.png

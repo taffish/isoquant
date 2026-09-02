@@ -1,0 +1,26 @@
+--- a/isoquant.py
++++ b/isoquant.py
+@@ -1203,15 +1203,16 @@ def prepare_reference_genome(args):
+     if not args.needs_reference:
+         return
+     logger.info("Reading reference genome from %s" % args.reference)
+-    ref_dir = os.path.dirname(args.reference)
+     ref_file_name = os.path.basename(args.reference)
+     ref_name, outer_ext = os.path.splitext(ref_file_name)
+ 
+-    # make symlink for pyfaidx index
+-    args.fai_file_name = args.reference + ".fai"
+-    if not os.path.exists(args.fai_file_name) and not os.access(ref_dir, os.W_OK):
+-        # index does not exist near the reference and reference folder is not writable
+-        # store index in the output folder in this case
+-        args.fai_file_name = os.path.join(args.output, ref_file_name + ".fai")
++    # Copy an adjacent pyfaidx index into the output when the user supplied
++    # one, but never update or create an index beside an input reference.
++    # os.access(..., os.W_OK) is not a reliable read-only-filesystem probe for
++    # container root, and pyfaidx can rebuild an existing stale index.
++    adjacent_fai = args.reference + ".fai"
++    args.fai_file_name = os.path.join(args.output, ref_file_name + ".fai")
++    if os.path.exists(adjacent_fai) and not os.path.exists(args.fai_file_name):
++        shutil.copy2(adjacent_fai, args.fai_file_name)
+ 
+     low_ext = outer_ext.lower()

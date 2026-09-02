@@ -7,11 +7,11 @@ Package identity:
 - name: `isoquant`
 - command: `taf-isoquant`
 - kind: `tool`
-- TAFFISH version: `4.0.0-r1`
+- TAFFISH version: `4.0.0-r2`
 - TAFFISH app license: Apache-2.0
 - upstream release: `ablab/IsoQuant` `v4.0.0`
 - runtime version: `IsoQuant 4.0.0`
-- container image: `ghcr.io/taffish/isoquant:4.0.0-r1`
+- container image: `ghcr.io/taffish/isoquant:4.0.0-r2`
 - native platforms: `linux/amd64`, `linux/arm64`
 - default upstream command: `isoquant`
 
@@ -80,6 +80,28 @@ project-specific inputs and should remain explicit files.
 Small upstream PolyA/TSS JSON models and the official toy dataset used by
 `isoquant --test` are retained. They are runtime assets, not external
 production databases.
+
+## Runtime Write Map
+
+The image installation under `/opt/isoquant` is immutable at runtime. IsoQuant
+4.0.0 creates four small path registries at startup; this release makes it honor
+`XDG_CONFIG_HOME` and points that path, `HOME`, Matplotlib, Numba and the other
+XDG scratch/cache paths below `/tmp`. Initialization therefore remains
+temporary even when TAFFISH passes the host HOME into a read-only SIF or
+container.
+
+Scientific outputs, converted annotations, aligner indices and alignments are
+written to the current project directory or the paths selected with
+`--output`, `--genedb_output` and `--index`. When a reference has no adjacent
+`.fai`, the TAFFISH package stores the newly generated pyfaidx index below
+`--output` instead of modifying the input directory; an existing adjacent
+`.fai` is copied there before reuse or any required rebuild. The temporary HOME
+registry is not a persistent database. Across separate wrapper invocations,
+reuse generated resources by passing the same explicit project-visible
+`--index`, preconverted `--genedb`,
+sorted/indexed `--bam`, or other input path. Docker runs the container as the
+invoking host UID/GID so bind-mounted outputs are not left root-owned; rootless
+Podman and ordinary-user Apptainer retain their normal host-user ownership.
 
 ## Usage
 
@@ -249,8 +271,24 @@ existing output. A fresh output directory remains the safest default.
 ## Resources, Databases, and Platform
 
 Native image platforms are `linux/amd64` and `linux/arm64`. Both use the same
-Python package lock and Debian runtime tools. No database download or fixed
-container database mount is required.
+Python package lock and Debian runtime tools.
+
+| Backend | Supported contract |
+| --- | --- |
+| Docker | Native amd64/arm64 image; wrapper applies the invoking UID/GID. |
+| Podman | Native amd64/arm64 image; ordinary rootless execution. |
+| Apptainer | Read-only SIF; configuration and runtime caches use `/tmp`. |
+
+No database/model download helper or fixed container database mount is
+required. The small PolyA/TSS JSON models are fixed assets of the official
+v4.0.0 distribution and stay in the image. Reference genomes, annotations,
+barcode whitelists and sequencing data are project-specific scientific inputs,
+not canonical assets published by IsoQuant, so the app does not auto-download or
+auto-select them. A minimap2 index or converted gffutils database is also tied
+to the user's chosen reference; create or obtain it deliberately and reuse it
+through the upstream `--index`, `--genedb` and `--genedb_output` interfaces.
+There is consequently no personal/system-wide TAFFISH database helper or
+automatic database/model mount for this app.
 
 IsoQuant defaults to 16 threads. Whole-genome long-read projects can require
 substantial RAM, temporary storage and output space, especially with
@@ -285,6 +323,10 @@ the aarch64 wheel does not link TBB.
   treat one synthetic plot or barcode helper help as protocol validation.
 - No network resource is needed by the normal smoke. Real references,
   annotations and whitelists remain user-managed inputs.
+- `isoquant-visualize` is the upstream batch CLI that writes static plots; it
+  is not a browser service, desktop GUI, noVNC session or long-running helper.
+  IsoQuant v4.0.0 declares only a `test` package extra, and the upstream
+  organization exposes no separate official IsoQuant GUI companion repository.
 
 ## Troubleshooting
 

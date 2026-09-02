@@ -1,0 +1,12 @@
+--- a/isoquant.py
++++ b/isoquant.py
+@@ -1154,7 +1154,8 @@
+ 
+ 
+ def set_configs_directory(args):
+-    config_dir = os.path.join(os.environ['HOME'], '.config', 'IsoQuant')
++    config_home = os.environ.get('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
++    config_dir = os.path.join(config_home, 'IsoQuant')
+     os.makedirs(config_dir, exist_ok=True)
+ 
+     args.db_config_path = os.path.join(config_dir, 'db_config.json')
