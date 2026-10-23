@@ -1,0 +1,6 @@
+{
+  "artifact": "taf-isoquant-v4.1.0-r1",
+  "schema": "taffish.build/v1",
+  "source_sha256": "5d615d7aaabfe8e63986ccbae5a4ce8846b572d87006ec524f92124fc8b81133",
+  "wrapper_sha256": "2256ce3d5bef23fd830edc6bebc958c1c26227c12f2e55f869999263e4debc31"
+}

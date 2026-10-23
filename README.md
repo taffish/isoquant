@@ -7,11 +7,11 @@ Package identity:
 - name: `isoquant`
 - command: `taf-isoquant`
 - kind: `tool`
-- TAFFISH version: `4.0.0-r2`
+- TAFFISH version: `4.1.0-r1`
 - TAFFISH app license: Apache-2.0
-- upstream release: `ablab/IsoQuant` `v4.0.0`
-- runtime version: `IsoQuant 4.0.0`
-- container image: `ghcr.io/taffish/isoquant:4.0.0-r2`
+- upstream release: `ablab/IsoQuant` `v4.1.0`
+- runtime version: `IsoQuant 4.1.0`
+- container image: `ghcr.io/taffish/isoquant:4.1.0-r1`
 - native platforms: `linux/amd64`, `linux/arm64`
 - default upstream command: `isoquant`
 
@@ -34,14 +34,14 @@ sorted and indexed BAM. A reference genome is required; a reference gene
 annotation is optional for transcript discovery and required by analyses that
 compare against or quantify reference features.
 
-This image installs the official IsoQuant `4.0.0` release asset with its
+This image installs the official IsoQuant `4.1.0` release asset with its
 published SHA256. The Python 3.12 environment is version-locked, and the image
 includes minimap2, samtools, STAR and STARlong so upstream raw-read alignment
 paths do not borrow tools from the host.
 
 ## Scope
 
-The app supports the IsoQuant 4.0 command surface for:
+The app supports the IsoQuant 4.1 command surface for:
 
 - bulk reference-guided and annotation-free transcript discovery
 - reference gene and transcript quantification
@@ -57,6 +57,8 @@ The app supports the IsoQuant 4.0 command surface for:
   Stereo-seq and custom molecule-description files
 - barcode/UMI extraction and deduplication
 - grouped, matrix and MTX count outputs
+- spliced/unspliced/ambiguous RNA velocity counts and loom export
+- per-experiment standalone HTML/JSON run summaries
 - IsoQuant result visualization
 
 The image does not bundle reference genomes, gene annotations, barcode
@@ -84,7 +86,7 @@ production databases.
 ## Runtime Write Map
 
 The image installation under `/opt/isoquant` is immutable at runtime. IsoQuant
-4.0.0 creates four small path registries at startup; this release makes it honor
+4.1.0 creates four small path registries at startup; this release makes it honor
 `XDG_CONFIG_HOME` and points that path, `HOME`, Matplotlib, Numba and the other
 XDG scratch/cache paths below `/tmp`. Initialization therefore remains
 temporary even when TAFFISH passes the host HOME into a read-only SIF or
@@ -189,7 +191,7 @@ taf-isoquant isoquant-detect-barcodes \
   --output sample
 ```
 
-The 4.0 visualizer consumes legacy `*.read_assignments.tsv`. Request that file
+The 4.1 visualizer consumes legacy `*.read_assignments.tsv`. Request that file
 during the main run with `--large_output read_info read_assignments
 read2transcripts`, or convert a default `read_info` result before plotting:
 
@@ -214,6 +216,16 @@ taf-isoquant isoquant --test
 `--test` writes `isoquant_test` in the current directory and replaces an
 existing directory of that name.
 
+## Version 4.1 Input Changes
+
+`--split_molecules` replaces the old split-specific mode names; use `--mode`
+for the chemistry and choose `--split_molecules auto`, `true` or `false` as
+appropriate. `--barcode_whitelist auto` with `--n_cells` infers cell barcodes
+from the supplied reads; it does **not** download a whitelist or choose a
+reference database. Explicit text/gzip whitelist files are still supported.
+`--polya_trimmed` now distinguishes `tag`, `list` and `flnc` sources. See
+`taf-isoquant isoquant --full_help` before migrating old command lines.
+
 ## Command Mode
 
 This is a normal TAFFISH tool app with automatic command mode. Use
@@ -230,6 +242,14 @@ taf-isoquant -- --help
 
 Do not write `taf-isoquant detect-barcodes ...`; the real packaged executable
 is named `isoquant-detect-barcodes`.
+
+For an argument containing spaces, the current automatic command mode needs
+literal quotes to survive its generated shell layer. For example, use
+`--output "'output with spaces'"`, not just `--output "output with spaces"`.
+Use a project-visible script file (`taf-isoquant sh task.sh`) for multi-line
+shell fragments containing shell variables; do not rely on several layers of
+`sh -c` interpolation. The validation uses the real generated wrapper, not
+only direct container commands, for path/argument boundaries.
 
 ## Inputs
 
@@ -263,10 +283,15 @@ and `--mode`, important outputs include:
 - PolyA and TSS prediction tables
 - `fusion_<bam-basename>.tsv` when fusion analysis is requested
 - per-group dense, sparse matrix and MTX outputs when grouping is enabled
+- RNA velocity `.loom` with named spliced/unspliced/ambiguous layers when applicable
+- `SAMPLE.summary.html` and `SAMPLE.summary_stats.json` with run QC and counts
 
 Use `--large_output` to control large per-read files. Use `--resume` only with
-an unfinished compatible run; use `--force` when intentionally replacing an
-existing output. A fresh output directory remains the safest default.
+an unfinished compatible 4.1.0 run; old-version unfinished runs cannot be resumed
+by 4.1.0. **Without `--force`, an existing output still gets overwritten after
+a warning and a nine-second countdown.** `--force` skips that warning; it is not
+a prerequisite for replacement. Always choose a fresh output directory unless
+reuse or replacement is deliberate. This is unchanged upstream behavior.
 
 ## Resources, Databases, and Platform
 
@@ -281,14 +306,31 @@ Python package lock and Debian runtime tools.
 
 No database/model download helper or fixed container database mount is
 required. The small PolyA/TSS JSON models are fixed assets of the official
-v4.0.0 distribution and stay in the image. Reference genomes, annotations,
+v4.1.0 distribution and stay in the image. Reference genomes, annotations,
 barcode whitelists and sequencing data are project-specific scientific inputs,
 not canonical assets published by IsoQuant, so the app does not auto-download or
 auto-select them. A minimap2 index or converted gffutils database is also tied
 to the user's chosen reference; create or obtain it deliberately and reuse it
 through the upstream `--index`, `--genedb` and `--genedb_output` interfaces.
 There is consequently no personal/system-wide TAFFISH database helper or
-automatic database/model mount for this app.
+automatic database/model mount for this app. The bundled models keep the upstream
+GPL-2.0-only license; user-selected reference/whitelist licenses remain separate.
+Missing user inputs fail explicitly. Normal runs and smoke do not fetch resources.
+
+To reuse a site-managed reference, an administrator can place their selected
+FASTA/GTF/index in a readable, traversable directory; ordinary users pass its
+files explicitly. Do not give users write permission merely to create `.fai`:
+the packaging patch writes a copy below the output directory. All engines support
+an explicit read-only mount (replace `/srv/reference` with the actual host path):
+
+```sh
+TAFFISH_DOCKER_RUN_ARGS='-v /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=docker taf-isoquant isoquant --reference /reference/genome.fa --genedb /reference/genes.gtf --fastq reads.fq.gz --data_type nanopore --output out
+TAFFISH_PODMAN_RUN_ARGS='-v /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=podman taf-isoquant isoquant --reference /reference/genome.fa --genedb /reference/genes.gtf --fastq reads.fq.gz --data_type nanopore --output out
+TAFFISH_APPTAINER_RUN_ARGS='--bind /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=apptainer taf-isoquant isoquant --reference /reference/genome.fa --genedb /reference/genes.gtf --fastq reads.fq.gz --data_type nanopore --output out
+```
+
+Docker Desktop/Podman VM must also be allowed to share the selected host path.
+The normal output path must be writable; the reference mount must remain read-only.
 
 IsoQuant defaults to 16 threads. Whole-genome long-read projects can require
 substantial RAM, temporary storage and output space, especially with
@@ -314,18 +356,23 @@ the aarch64 wheel does not link TBB.
 - Single-cell, spatial and fusion command surfaces and dependencies are
   included; the quick smoke does not reproduce every protocol or validate
   biological accuracy on production data.
-- IsoQuant 4.0.0 itself rejects the hidden `--cage` option as unsupported.
+- IsoQuant 4.1.0 itself rejects the hidden `--cage` option as unsupported.
   Barcode whitelists must be text or gzip-compressed text: its HDF5 loader is
-  also explicitly unimplemented upstream. Installing `pybedtools` or `h5py`
-  would not enable either path, so they are intentionally not bundled.
+  also explicitly unimplemented upstream. `h5py` is now installed for loom export,
+  but this does not implement the upstream HDF5 whitelist reader.
 - The smoke converts the official toy `read_info` output to the legacy format
   consumed by `isoquant-visualize` and checks real PNG outputs. It does not
   treat one synthetic plot or barcode helper help as protocol validation.
 - No network resource is needed by the normal smoke. Real references,
   annotations and whitelists remain user-managed inputs.
-- `isoquant-visualize` is the upstream batch CLI that writes static plots; it
-  is not a browser service, desktop GUI, noVNC session or long-running helper.
-  IsoQuant v4.0.0 declares only a `test` package extra, and the upstream
+- `isoquant-visualize` remains a batch CLI that writes static PNG plots. The new
+  per-experiment HTML summary is also a static upstream output, not a TAFFISH
+  report generator or browser service. It embeds CSS and SVG plots; no CDN,
+  JavaScript runtime, listening port or GUI process is needed. Open the generated
+  `SAMPLE.summary.html` in a browser. Tables and plots are static (no filter,
+  tooltip or download controls). Report footers contain command-line paths, so
+  review them before sharing. Service/noVNC lifecycle checks do not apply.
+  IsoQuant v4.1.0 declares only a `test` package extra, and the upstream
   organization exposes no separate official IsoQuant GUI companion repository.
 
 ## Troubleshooting
@@ -334,8 +381,9 @@ the aarch64 wheel does not link TBB.
   create `.bai` or `.csi` before running IsoQuant.
 - If GTF conversion is slow, use `--complete_genedb` for official annotations
   that already contain gene and transcript meta-features.
-- If an output directory already exists, use a new directory, `--resume`, or
-  the explicit destructive `--force` option as appropriate.
+- If an output directory already exists, use a new directory or a compatible
+  `--resume`; an ordinary rerun can overwrite results after a warning even
+  without `--force`. Do not rely on omission of `--force` to protect data.
 - If barcode calling fails, confirm the selected `--mode`, whitelist count,
   molecule structure and barcode/UMI orientation match the library protocol.
 
@@ -343,18 +391,71 @@ the aarch64 wheel does not link TBB.
 
 The smoke suite checks:
 
-- exact IsoQuant `4.0.0` runtime and locked Python imports
+- exact IsoQuant `4.1.0` runtime and locked Python imports
 - `isoquant`, barcode helper and visualizer help surfaces
 - minimap2, samtools, STAR and STARlong runtime identities
 - packaged annotation/count/read-info/Visium/BAM helper modules
 - upstream `isoquant --test` on bundled reads, reference and annotation
 - minimap2-to-samtools alignment, BAM indexing, transcript-model GTF and count output
 - read-info conversion and real `isoquant-visualize` PNG output
+- actual upstream loom exporter on synthetic counts with layer/value checks
+- actual pipeline HTML/JSON summary, embedded SVG plots and offline resources
 - dynamic-library resolution for installed Python extension modules
 
 The full pipeline test is run offline and independently in a fresh container.
 It is integration coverage, not a benchmark or a scientific validation of all
-IsoQuant 4.0 modes.
+IsoQuant 4.1 modes.
+
+Validation snapshot (2026-10-21):
+
+| Gate | Current candidate evidence |
+| --- | --- |
+| Native builds | amd64 and arm64 rebuilt with fixed BuildKit 0.33.1, canonical app-root context, lightweight build-time checks |
+| Direct offline smoke | 273 independent probes on the rebuilt images: combined exist, 16 individual exist, four tests; D/P normal, read-only and nonroot read-only on both native platforms, plus amd64 SIF |
+| xjp native amd64 | Docker, rootless Podman and ordinary-user Apptainer: 147 exact probes and 93 actual-wrapper checks passed |
+| Native arm64 | Docker and Podman: 126 exact probes and 62 actual-wrapper checks passed; Apptainer not separately validated |
+| Final-image permissions | Nonzero UID, no DAC-bypass capabilities, full parent-directory/symlink inspection and bad-mode negative test passed |
+| Persistent paths | Read-only reference with/without adjacent FAI, output ownership, existing-output warning, resume and explicit index/DB reuse |
+| New functionality | Actual upstream loom export, synthetic-barcode pipeline producing loom, HTML/JSON/SVG and PNG checks |
+| Static browser report | Offline structural checks passed; maintainer confirmed the generated report's plots, tables and narrow-window display |
+| Metadata/docs | taf check, docs checker (83 lines, no warnings), stable upstream and publish dry-run passed; no actual publication |
+
+The candidate is **ready for manual publication**, not yet published. All five
+tested wrapper combinations passed 26 primary and five additional checks each
+(155 checks total). An earlier Docker Desktop file-sharing failure required an
+authorized recovery. In the final fixed-builder rerun, one ARM64 Podman client
+timed out on a STAR existence probe without leaving a container; the entire
+21-probe nonroot layer was rerun successfully, followed by all 31 wrapper checks.
+The original failure receipt is retained. No app code or assertion was changed
+to bypass either engine issue; no backend exception is claimed.
+ARM64 Apptainer is not separately combination-tested: native ARM64 functionality
+and the read-only Apptainer backend have separate evidence; this is not an ARM64
+SIF PASS. Tests are not full production/protocol or biological validation.
+
+Docker image inspect reports 762,984,273 bytes (amd64) and 802,090,798 bytes
+(arm64). The installed environment is about 592/624 MiB respectively, dominated
+by LLVM/Numba, SciPy, pysam and scientific Python runtime libraries. Build tools,
+pip caches, static archives and test/benchmark trees are excluded or cleaned in
+the builder/final stages. Runtime setuptools remains because loompy declares it.
+
+## Build Provenance and Packaging Patches
+
+The official v4.1.0 asset SHA256 is
+`04bdc504ae63bdf777aac4dc04109b60f477ea4d157ff928a96c784a12d968da`.
+The source tag points to `c4462c8d9fa72557b7357a840cc6897563a88e45`.
+The two inherited, checksum-pinned patches only redirect generated FAI files
+and the path registry; no analysis algorithm is modified. Both patch files are
+unchanged from 4.0.0-r2, and the resulting `isoquant.py` SHA256 is
+`b8da182cb032fa3a79039d0b09a2136b10ac12ef663c8fdcf802c55933e7c740`.
+
+Source/license texts and Python/Debian package inventories remain under
+`/opt/isoquant/share`. The base digest and version lock constrain inputs, but
+Debian/PyPI/GitHub availability and transitive artifacts can drift. Dockerfile
+comments identify the check/revalidation path; this is not an indefinite
+bit-identical rebuild guarantee. The canonical Action is unchanged. Its floating
+builder source was resolved and fixed for this validation round; the actual
+publication must still confirm its builder/frontend, public image permissions
+and Index/SIF results. Local image IDs are not future GHCR manifest digests.
 
 ## License and Citation
 

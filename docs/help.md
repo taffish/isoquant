@@ -1,90 +1,83 @@
-isoquant 4.0.0-r2
+isoquant 4.1.0-r1
 
 Purpose:
-  Discover and quantify transcripts from Nanopore, PacBio CCS, or assembled
-  long RNA reads; optional modes cover single-cell/spatial barcodes, fusion,
-  exon/intron, PolyA/TSS, and static result plots.
+  Discover and quantify long-read transcripts; produce count tables,
+  transcript models, static plots and an offline HTML run summary.
 
-Usage:
-  taf-isoquant isoquant [IsoQuant options]
-  taf-isoquant isoquant-detect-barcodes [options]
-  taf-isoquant isoquant-visualize OUTPUT_DIR [options]
-
-Start a bulk run:
+Common tasks:
   taf-isoquant isoquant --reference genome.fa --genedb genes.gtf --complete_genedb --fastq reads.fq.gz --data_type nanopore --threads 8 --output out
-
-Other common tasks:
   taf-isoquant isoquant --reference genome.fa --fastq reads.fq.gz --data_type nanopore --analysis transcript_discovery --output denovo
   taf-isoquant isoquant --reference genome.fa --genedb genes.gtf --bam reads.sorted.bam --data_type pacbio_ccs --output bam-out
   taf-isoquant isoquant --reference genome.fa --genedb genes.gtf --fastq reads.fq.gz --data_type nanopore --mode tenX_v3 --barcode_whitelist barcodes.tsv.gz --output sc
   taf-isoquant isoquant-detect-barcodes --input reads.fq.gz --barcodes barcodes.tsv.gz --mode tenX_v3 --output sample
-  taf-isoquant isoquant --test
 
-Visualization:
-  IsoQuant 4.0 plots need legacy read_assignments input. Request it with
-  --large_output read_info read_assignments read2transcripts, or convert:
+Inputs and controls:
+  --reference          Genome FASTA, plain or gzip.
+  --genedb             GTF/GFF/gffutils DB; needed for reference analyses.
+  --fastq / --bam       Long reads, or sorted and indexed alignments.
+  --data_type          nanopore, pacbio_ccs or assembly.
+  --analysis           quantification, transcript_discovery,
+                       exon_quantification and/or fusion.
+  --mode               Bulk or a supported single-cell/spatial chemistry.
+  --barcode_whitelist  Text/gzip list, or auto to infer from input reads.
+  --n_cells            Expected cell count or auto; no resource download.
+  --split_molecules    auto, true or false; replaces split-specific modes.
+  --threads            Worker threads (default 16).
+  --output             Output directory; prefer a fresh directory.
+  --resume             Resume compatible 4.1.0 output, not older-version runs.
+  --force              Skip the existing-output warning; use with care.
+  --index              Explicit reusable aligner index.
+  --genedb_output      Directory for converted annotation databases.
+
+View results:
+  Open out/SAMPLE/SAMPLE.summary.html in a browser (offline, no server).
+  Its plots and tables are static; summary_stats.json contains the data.
+  For per-gene PNG plots, request --large_output read_info read_assignments
+  read2transcripts during the run, or convert existing read information:
   taf-isoquant python -m isoquant_lib.scripts.convert_read_info --read_info out/SAMPLE/SAMPLE.read_info.tsv.gz --format read_assignments --output out/SAMPLE/SAMPLE.read_assignments.tsv
   printf '%s\n' ENSG00000123456 > genes.txt
   taf-isoquant isoquant-visualize out --gene_list genes.txt --viz_output plots
 
-Required inputs:
-  --reference           Reference genome FASTA, optionally gzipped.
-  --fastq               Raw long-read FASTA/FASTQ file(s).
-  --bam                 Coordinate-sorted and indexed long-read BAM file(s).
-  --genedb              Optional GTF/GFF/gffutils DB; required for reference,
-                        exon and fusion analyses.
-  --data_type           nanopore, pacbio_ccs, or assembly.
-  --barcode_whitelist   Required by applicable single-cell/spatial modes.
-
-Key controls:
-  --analysis            Select quantification, transcript_discovery,
-                        exon_quantification, and/or fusion.
-  --mode                Select bulk or a supported single-cell/spatial mode.
-  --threads             Worker threads; upstream default is 16.
-  --output              Output directory.
-  --resume              Resume a compatible unfinished output.
-  --force               Intentionally replace an existing output.
-  --index               Reuse an explicit aligner index.
-  --genedb_output       Put a converted annotation DB at an explicit location.
-
 Key outputs:
-  isoquant.log and alignment logs
-  *.read_info.tsv.gz and transcript-model read tables
-  reference/discovered count and TPM tables
-  transcript-model and extended-annotation GTF
-  exon, splice-junction, intron-retention, PolyA/TSS and optional fusion tables
+  isoquant.log; read-info tables; reference/discovered counts and TPM;
+  transcript-model/extended GTF; optional exon/fusion/PolyA/TSS tables;
+  grouped matrices and RNA velocity loom files when applicable.
 
-Resources and persistence:
-  Small PolyA/TSS models are bundled. Supply project-specific references,
-  annotations, whitelists and reads explicitly; no external database/model
-  download or TAFFISH database mount is required.
-  Reuse generated indices or databases with explicit --index, --genedb and
-  --genedb_output paths. A missing reference .fai is created under --output,
-  never beside the input; an adjacent .fai is copied there before reuse. The internal
-  path registry and library caches are temporary under /tmp so read-only SIFs
-  remain usable.
-  Docker writes bind-mounted outputs as the invoking UID/GID.
+Resources:
+  Small PolyA/TSS models are bundled; no separate model installation.
+  Supply references, annotations and whitelists explicitly. Missing inputs
+  fail; automatic barcode detection uses your reads, not the network.
+  Generated FAI copies, indices and databases belong in writable output.
+  To share a read-only reference directory, select the matching backend:
+  TAFFISH_DOCKER_RUN_ARGS='-v /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=docker taf-isoquant isoquant --reference /reference/genome.fa --fastq reads.fq.gz --data_type nanopore --output out
+  TAFFISH_PODMAN_RUN_ARGS='-v /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=podman taf-isoquant isoquant --reference /reference/genome.fa --fastq reads.fq.gz --data_type nanopore --output out
+  TAFFISH_APPTAINER_RUN_ARGS='--bind /srv/reference:/reference:ro' TAFFISH_CONTAINER_BACKEND=apptainer taf-isoquant isoquant --reference /reference/genome.fa --fastq reads.fq.gz --data_type nanopore --output out
+  Replace /srv/reference with a readable host directory; VM backends need
+  host file-sharing access. Keep outputs on a writable wrapper-visible path.
 
-Backends and platforms:
-  Native images are provided for linux/amd64 and linux/arm64.
+Backends:
+  Native linux/amd64 and linux/arm64 images; Docker, Podman or Apptainer.
   TAFFISH_CONTAINER_BACKEND=docker taf-isoquant isoquant --test
   TAFFISH_CONTAINER_BACKEND=podman taf-isoquant isoquant --test
   TAFFISH_CONTAINER_BACKEND=apptainer taf-isoquant isoquant --test
-  Keep inputs, reusable indices and outputs on paths visible to the wrapper.
-  isoquant-visualize is a batch plot command, not a GUI/browser service.
+  WARNING: --test replaces isoquant_test in the current directory.
+  HTML/PNG files are viewed on the host; no GUI port or GPU is required.
 
-Important boundaries:
-  The official --test replaces isoquant_test in the current directory.
-  Use a new output directory unless --resume or --force is deliberate.
-  Upstream 4.0.0 rejects --cage and does not load HDF5 barcode lists; use
-  plain or gzip-compressed text whitelists.
-  Production whole-genome runs may need substantial RAM, storage and time.
+Immediate notes:
+  Existing output can be overwritten after a warning even without --force!
+  Use plain/gzip text whitelists: upstream HDF5 whitelist loading is absent.
+  --cage is not supported upstream. Do not resume pre-4.1.0 partial runs.
+  Large projects need appropriate RAM, storage and thread allocation.
+  Review report command-line paths before sharing reports.
 
-Help and command mode:
-  taf-isoquant --help              This TAFFISH help.
-  taf-isoquant -- --help           Default upstream IsoQuant help.
+More help:
   taf-isoquant isoquant --full_help
-  taf-isoquant isoquant --version
-  Use the explicit packaged executable before upstream subcommands/options.
+  https://ablab.github.io/IsoQuant/
+  https://github.com/taffish/isoquant
 
-Detailed documentation: https://ablab.github.io/IsoQuant/ and https://github.com/ablab/IsoQuant
+Wrapper options:
+  taf-isoquant --help       This installed-wrapper help.
+  taf-isoquant --version    TAFFISH wrapper version.
+  taf-isoquant --compile    Generated shell.
+  taf-isoquant -- --help    Default upstream help.
+  taf-isoquant isoquant --version

@@ -1,8 +1,12 @@
+# The digest pins base contents, not permanent registry availability. If missing,
+# verify the official Python image and revalidate a new immutable app release.
 FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS builder
 
-ARG ISOQUANT_VERSION=4.0.0
-ARG ISOQUANT_TARBALL_URL=https://github.com/ablab/IsoQuant/releases/download/v4.0.0/IsoQuant-4.0.0.tar.gz
-ARG ISOQUANT_TARBALL_SHA256=98fbe5b2f9c39c9cc52041b106f06e6f11bbf9c75c500b44505e973805ed0921
+# Release assets can disappear; check the official tag/asset identity on 404 or
+# checksum failure. Do not bypass verification or silently substitute latest.
+ARG ISOQUANT_VERSION=4.1.0
+ARG ISOQUANT_TARBALL_URL=https://github.com/ablab/IsoQuant/releases/download/v4.1.0/IsoQuant-4.1.0.tar.gz
+ARG ISOQUANT_TARBALL_SHA256=04bdc504ae63bdf777aac4dc04109b60f477ea4d157ff928a96c784a12d968da
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONNOUSERSITE=1
@@ -13,6 +17,9 @@ ENV ISOQUANT_PYTHON=/opt/isoquant/python
 ENV PYTHONPATH=/opt/isoquant/python/lib/python3.12/site-packages
 ENV PATH=/opt/isoquant/python/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Debian repositories are mutable: transitive versions can drift or disappear.
+# On apt failure, inspect bookworm availability; revalidate both architectures
+# before recording changed dependencies in a new app release.
 RUN set -eux; \
     for attempt in 1 2 3 4 5; do \
       if apt-get -o Acquire::Retries=3 update \
@@ -38,6 +45,9 @@ COPY docker/requirements.lock /tmp/isoquant-requirements.lock
 COPY docker/patches/0001-store-generated-fai-in-output.patch /tmp/isoquant-fai.patch
 COPY docker/patches/0002-honor-xdg-config-home.patch /tmp/isoquant-xdg.patch
 
+# requirements.lock pins package versions, not PyPI retention or artifact bytes.
+# If a wheel/sdist disappears or a resolver fails, inspect the official package
+# and native-platform availability; do not silently relax the dependency lock.
 RUN set -eux; \
     curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL "${ISOQUANT_TARBALL_URL}" -o isoquant.tar.gz; \
     echo "${ISOQUANT_TARBALL_SHA256}  isoquant.tar.gz" | sha256sum -c -; \
@@ -46,10 +56,10 @@ RUN set -eux; \
     test "$(cat src/VERSION)" = "${ISOQUANT_VERSION}"; \
     echo '22c8c901dcca3142ed02e237d23e0dd97287bc1079ce0af564b104f0badbf7d4  /tmp/isoquant-fai.patch' | sha256sum -c -; \
     patch --batch -d src -p1 < /tmp/isoquant-fai.patch; \
-    echo '1af731367563d86c3c688739bafe3a9909f93951ae96a07e755d95a6afa85e5b  src/isoquant.py' | sha256sum -c -; \
+    echo '59f4d0034d8b782a248ed1df61b2b771fea74e66cbb9a1f3d728f96d29b212a7  src/isoquant.py' | sha256sum -c -; \
     echo '03d60b6eb46d5b74dead6c38402a9429a6611bcf4238079c0a390d4a06bd824e  /tmp/isoquant-xdg.patch' | sha256sum -c -; \
     patch --batch -d src -p1 < /tmp/isoquant-xdg.patch; \
-    echo '4228b0fd446bad29685f0be678a7801552ddaa9f86c2b279f9819ffca71a8f38  src/isoquant.py' | sha256sum -c -; \
+    echo 'b8da182cb032fa3a79039d0b09a2136b10ac12ef663c8fdcf802c55933e7c740  src/isoquant.py' | sha256sum -c -; \
     python -m venv "${ISOQUANT_PYTHON}"; \
     python -m pip install --no-cache-dir \
       "pip==26.0.1" \
@@ -73,7 +83,7 @@ RUN set -eux; \
       "SHA256: ${ISOQUANT_TARBALL_SHA256}" \
       "TAFFISH patch SHA256: 22c8c901dcca3142ed02e237d23e0dd97287bc1079ce0af564b104f0badbf7d4 (copy/rebuild pyfaidx FAI in the output directory without modifying the input)" \
       "TAFFISH patch SHA256: 03d60b6eb46d5b74dead6c38402a9429a6611bcf4238079c0a390d4a06bd824e (honor XDG_CONFIG_HOME for the IsoQuant path registry)" \
-      "Patched isoquant.py SHA256: 4228b0fd446bad29685f0be678a7801552ddaa9f86c2b279f9819ffca71a8f38" \
+      "Patched isoquant.py SHA256: b8da182cb032fa3a79039d0b09a2136b10ac12ef663c8fdcf802c55933e7c740" \
       "Python: 3.12" \
       "XGBoost runtime: xgboost-cpu 2.1.4; IsoQuant uses CPU model inference and exposes no GPU-only analysis mode." \
       "Scikit-learn runtime: 1.7.2; newer 1.9 releases removed the estimator API used by XGBoost 2.1.4 model loading." \
@@ -100,8 +110,6 @@ RUN set -eux; \
     rm -rf \
       "${site_packages}"/pip \
       "${site_packages}"/pip-*.dist-info \
-      "${site_packages}"/setuptools \
-      "${site_packages}"/setuptools-*.dist-info \
       "${site_packages}"/wheel \
       "${site_packages}"/wheel-*.dist-info; \
     rm -f "${ISOQUANT_PYTHON}"/bin/pip "${ISOQUANT_PYTHON}"/bin/pip3 "${ISOQUANT_PYTHON}"/bin/pip3.12; \
@@ -123,6 +131,8 @@ ENV XDG_DATA_HOME=/tmp/xdg-data
 ENV PYTHONPATH=/opt/isoquant/python/lib/python3.12/site-packages
 ENV PATH=/opt/isoquant/python/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
 
+# The same mutable Debian-repository boundary applies to runtime packages.
+# Keep architecture-specific runtime dependencies; recheck ldd and real tools.
 RUN set -eux; \
     tbb_runtime=''; \
     if [ "$(dpkg --print-architecture)" = 'amd64' ]; then \
@@ -164,6 +174,9 @@ RUN set -eux; \
     dpkg-query -W -f='${Package}==${Version}\n' | sort > /opt/isoquant/share/doc/isoquant/debian-packages.txt
 
 FROM runtime AS final
+
+# Build-time checks stay lightweight on both native architectures. Full analysis,
+# loom export and browser/report rendering belong to independent offline tests.
 
 RUN set -eux; \
     chmod 0755 /opt/isoquant/share/testdata/isoquant-smoke.sh; \

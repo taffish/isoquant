@@ -1,21 +1,25 @@
-# Resolved for IsoQuant 4.0.0 on Python 3.12.
+# Resolved for IsoQuant 4.1.0 on Python 3.12.
 argcomplete==3.7.0
 argh==0.31.3
 biopython==1.87
+click==8.5.0
 contourpy==1.3.3
 cycler==0.12.1
 editdistance==0.8.1
 fonttools==4.63.0
 gffutils==0.14
+h5py==3.16.0
 intervaltree==3.2.1
 joblib==1.5.3
 kiwisolver==1.5.0
 llvmlite==0.48.0
+loompy==3.0.8
 mappy==2.31
 matplotlib==3.11.1
 narwhals==2.24.0
 numba==0.66.0
 numpy==2.4.6
+numpy-groupies==0.14.2
 packaging==26.2
 pandas==3.0.5
 pillow==12.3.0
@@ -27,6 +31,7 @@ PyYAML==6.0.3
 scikit-learn==1.7.2
 scipy==1.18.0
 seaborn==0.13.2
+setuptools==74.1.3
 simplejson==4.1.1
 six==1.17.0
 sortedcontainers==2.4.0
